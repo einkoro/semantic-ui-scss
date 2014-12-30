@@ -1,0 +1,17 @@
+{
+    "name": "semantic-ui-scss",
+    "version": "1.4.1",
+    "main": [
+        "scss/semantic-ui.scss",
+        "js/semantic-ui.js"
+    ],
+    "ignore": [
+        "gulpfile.js",
+        "package.json",
+        "tmp",
+        ".gitignore"
+    ],
+    "dependencies": {
+        "jquery": ">= 1.8"
+    }
+}
