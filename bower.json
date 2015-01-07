@@ -1,6 +1,6 @@
 {
     "name": "semantic-ui-scss",
-    "version": "1.4.1",
+    "version": "1.6.2",
     "main": [
         "scss/semantic-ui.scss",
         "js/semantic-ui.js"
