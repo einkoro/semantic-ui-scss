@@ -160,6 +160,32 @@ gulp.task('build', function() {
 gulp.task('convert', function() {
     console.log('Converting LESS to SCSS');
 
+    // Index global variables for reference during the convert
+    var globals = {};
+
+    var themes = glob.sync(paths.src.themes + '/*/'),
+        stream = new streamQueue({ objectMode: true });
+
+    themes.forEach(function(themeDir) {
+        var themeName = themeDir.match(/.+\/(.+)\/$/)[1];
+
+        globals[themeName] = {};
+
+        stream.queue(
+            gulp.src(themeDir + 'globals/site.variables')
+
+            // We don't want to replace but I didn't find a gulp match plugin for file contents
+            // This really should be replaced
+            .pipe(replace(/^\s*@(?!font-face|import|media|keyframes|-|\{)([\w\d]+?)[\s:]/gmi, function(string, variableName) {
+                globals[themeName][variableName] = true;
+
+                return string;
+            }))
+        );
+
+    });
+
+    // Convert LESS syntax to SCSS syntax
     var sources = [
         paths.src.definitions + '/*/*.less',
         paths.src.themes + '/*/*/*.variables',
@@ -177,16 +203,32 @@ gulp.task('convert', function() {
         // Replace variables (@ with $) and prefix with the filename
         // uppercase first letter of the match to maintain camelcase
         .pipe(foreach(function(stream, file) {
-            var basename = path.basename(file.relative, path.extname(file.relative));
+            var baseName  = path.basename(file.relative, path.extname(file.relative)),
+                themeName = path.dirname(file.relative).match(/.+\/(.+)\/.+$/)[1];
 
-            return stream.pipe(replace(/@(?!font-face|import|media|keyframes|-)(.{1})/g, function(string, firstLetter) {
-                if (basename == 'site') {
-                    var replacement = '$' + firstLetter;
+            // Definitions are not a theme
+            if (themeName == 'definitions') {
+                themeName = 'default';
+            }
+
+            return stream.pipe(replace(/@(?!font-face|import|media|keyframes|-)(\{)?([\w\d]{1})([\w\d]*)/g, function(string, firstCapture, secondCapture, thirdCapture) {
+                var replacement  = '$',
+                    variableName = secondCapture + thirdCapture;
+
+                if (firstCapture) {
+                    replacement += firstCapture;
                 }
+
+                // Do not prefix globals
+                if (variableName in globals[themeName] || variableName in globals['default']) {
+                    replacement += secondCapture;
+                }
+                // Prefix everything else
                 else {
-                    var replacement = '$' + basename + firstLetter.toUpperCase();
+                    replacement += baseName + secondCapture.toUpperCase();
                 }
-                return replacement;
+
+                return replacement + thirdCapture;
             }));
         }))
 
@@ -212,47 +254,47 @@ gulp.task('convert', function() {
         }))
 
         .pipe(gulp.dest(paths.tmp.root));
-
-    // Concat theme overrides into definitions
-    function concatOverrides() {
-
-    }
-
-    // Fix assset paths
-    function fixAssets() {
-
-    }
 });
 
-// Concat theme variables into one settings file per theme
+
 gulp.task('concat', function() {
-    console.log('Concatenating variables into settings files');
+    console.log('Concatenating variables into settings files and definitions into componenets');
 
     var themes = glob.sync(paths.tmp.themes + '/*/'),
         stream = new streamQueue({ objectMode: true });
 
     themes.forEach(function(themeDir) {
-        var themeName = themeDir.match(/.+\/(.+)\/$/)[1];
+        var themeName = path.basename(themeDir);
 
-        console.log(themeDir);
-        console.log(themeDir + '*/*.variables');
-        console.log(paths.dest.scss + '/themes/' + themeName + '/');
-
+        // Concat theme variables into one settings file per theme
         stream.queue(
             gulp.src(themeDir + '*/*.variables')
 
-            // Comment out variables
-            //.pipe(replace(/^\$(?!font-face|import|media|keyframes|-)/g, '// $'))
+                // Add new lines before opening comments
+                .pipe(replace(/\/\*{2,}/g, '\n\n$&'))
 
-            // Add new lines before opening comments
-            .pipe(replace(/\/(\*{2,})/g, '\n\n/$1'))
+                .pipe(concat('_' + themeName + '.scss'))
 
-            // Concat the variables as a partial
-            .pipe(concat('_variables.scss'))
-
-            // Organize by theme name
-            .pipe(gulp.dest(paths.dest.scss + '/themes/' + themeName))
+                .pipe(gulp.dest(paths.dest.scss + '/semantic/variables'))
         );
+
+        // Concat definitions and theme overrides into components
+        var definitions = glob.sync(paths.tmp.definitions + '/*/*');
+
+        definitions.forEach(function(definition) {
+            var definitionType = path.dirname(definition).match(/.+\/(.+)$/)[1],
+                definitionName = path.basename(definition, path.extname(definition)),
+                sources        = [
+                    definition,
+                    paths.tmp.themes + '/' + themeName + '/' + definitionType + '/' + definitionName + '.overrides'
+                ];
+
+            stream.queue(
+                gulp.src(sources)
+                    .pipe(concat('_' + definitionName + '.scss'))
+                    .pipe(gulp.dest(paths.dest.scss + '/semantic/components/' + themeName))
+            );
+        });
 
     });
 
