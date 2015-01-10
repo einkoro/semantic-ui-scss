@@ -200,8 +200,9 @@ gulp.task('convert', function() {
         // Remove .loadUIOverrides(); from definitions
         .pipe(replace(/@import '\.\.\/\.\.\/theme\.config';/g, ''))
 
-        // Replace variables (@ with $) and prefix with the filename
-        // uppercase first letter of the match to maintain camelcase
+        // Replace variables (@ with $)
+        // Prefix with the filename if not global
+        // Uppercase first letter of the match to maintain camelcase
         .pipe(foreach(function(stream, file) {
             var baseName  = path.basename(file.relative, path.extname(file.relative)),
                 themeName = path.dirname(file.relative).match(/.+\/(.+)\/.+$/)[1];
@@ -211,24 +212,24 @@ gulp.task('convert', function() {
                 themeName = 'default';
             }
 
-            return stream.pipe(replace(/@(?!font-face|import|media|keyframes|-)(\{)?([\w\d]{1})([\w\d]*)/g, function(string, firstCapture, secondCapture, thirdCapture) {
+            return stream.pipe(replace(/@(?!font-face|import|media|keyframes|-)(\{)?([\w\d]{1})([\w\d\-]*)/g, function(string, openingBrace, nameFirstChar, nameRemainder) {
                 var replacement  = '$',
-                    variableName = secondCapture + thirdCapture;
+                    variableName = nameFirstChar + nameRemainder;
 
-                if (firstCapture) {
-                    replacement += firstCapture;
+                if (openingBrace) {
+                    replacement += openingBrace;
                 }
 
                 // Do not prefix globals
                 if (variableName in globals[themeName] || variableName in globals['default']) {
-                    replacement += secondCapture;
+                    replacement += nameFirstChar;
                 }
                 // Prefix everything else
                 else {
-                    replacement += baseName + secondCapture.toUpperCase();
+                    replacement += baseName + nameFirstChar.toUpperCase();
                 }
 
-                return replacement + thirdCapture;
+                return replacement + nameRemainder;
             }));
         }))
 
@@ -244,6 +245,10 @@ gulp.task('convert', function() {
         // Replace spin with adjust-hue
         .pipe(replace(/spin\(/g, 'adjust-hue('))
 
+        // Add new lines before opening comments
+        // mostly cosmetic but it makes the files much easier to read after concat
+        .pipe(replace(/\/\*{2,}/g, '\n\n$&'))
+
         // Rename less files to scss
         .pipe(rename(function(path) {
             path.dirname = path.dirname.replace(new RegExp(paths.src.root + '/', 'g'), '');
@@ -258,7 +263,7 @@ gulp.task('convert', function() {
 
 
 gulp.task('concat', function() {
-    console.log('Concatenating variables into settings files and definitions into componenets');
+    console.log('Concatenating variables, definitions and overrides into componenets');
 
     var themes = glob.sync(paths.tmp.themes + '/*/'),
         stream = new streamQueue({ objectMode: true });
@@ -269,12 +274,7 @@ gulp.task('concat', function() {
         // Concat theme variables into one settings file per theme
         stream.queue(
             gulp.src(themeDir + '*/*.variables')
-
-                // Add new lines before opening comments
-                .pipe(replace(/\/\*{2,}/g, '\n\n$&'))
-
                 .pipe(concat('_' + themeName + '.scss'))
-
                 .pipe(gulp.dest(paths.dest.scss + '/semantic/variables'))
         );
 
@@ -282,11 +282,12 @@ gulp.task('concat', function() {
         var definitions = glob.sync(paths.tmp.definitions + '/*/*');
 
         definitions.forEach(function(definition) {
-            var definitionType = path.dirname(definition).match(/.+\/(.+)$/)[1],
-                definitionName = path.basename(definition, path.extname(definition)),
-                sources        = [
+            var definitionType      = path.dirname(definition).match(/.+\/(.+)$/)[1],
+                definitionName      = path.basename(definition, path.extname(definition)),
+                definitionThemePath = paths.tmp.themes + '/' + themeName + '/' + definitionType + '/' + definitionName,
+                sources             = [
                     definition,
-                    paths.tmp.themes + '/' + themeName + '/' + definitionType + '/' + definitionName + '.overrides'
+                    definitionThemePath + '.overrides'
                 ];
 
             stream.queue(
