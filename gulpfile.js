@@ -65,11 +65,11 @@ var semantic = {
 
 // Default to perform all tasks in the order required to release a build
 gulp.task('default', function() {
-    runSequence([
+    runSequence(
         'clean',
         'fetch',
         'build'
-    ]);
+    );
 });
 
 // Clean the temporary and build directories
@@ -150,10 +150,10 @@ gulp.task('fetch', function(tag) {
 
 // Build SCSS version of Semantic UI
 gulp.task('build', function() {
-    runSequence([
+    runSequence(
         'convert',
         'concat'
-    ]);
+    );
 });
 
 // Convert LESS to SCSS
@@ -192,7 +192,7 @@ gulp.task('convert', function() {
         paths.src.themes + '/*/*/*.overrides'
     ];
 
-    return gulp.src(sources, { base: process.cwd() })
+    gulp.src(sources, { base: process.cwd() })
 
         // Remove @import '../../theme.config'; from definitions
         .pipe(replace(/\.loadUIOverrides\(\);/g, ''))
@@ -298,6 +298,4 @@ gulp.task('concat', function() {
         });
 
     });
-
-    return stream;
 });
