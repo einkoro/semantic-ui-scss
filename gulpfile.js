@@ -240,7 +240,7 @@ gulp.task('convert', function() {
         .pipe(replace(/\.([\w\-]*\(.*\)\s*;)/g, '@include $1'))
 
         // Replace string literals
-        .pipe(replace(/~"(.*)"/g, '#{"$1"}'))
+        .pipe(replace(/~"([^"]*)"/g, '#{"$1"}'))
 
         // Replace spin with adjust-hue
         .pipe(replace(/spin\(/g, 'adjust-hue('))
