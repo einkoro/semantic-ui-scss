@@ -1,6 +1,6 @@
 {
     "name": "semantic-ui-scss",
-    "version": "1.6.2",
+    "version": "1.7.0-alpha",
     "title": "Semantic UI SCSS",
     "description": "A SCSS conversion of Semantic UI.",
     "author": "Jan Pingel <jpingel@bitpiston.com>",
@@ -29,6 +29,7 @@
         "gulp-copy": "^0.0.2",
         "gulp-foreach": "^0.1.0",
         "gulp-git": "^0.5.5",
+        "gulp-insert": "^0.4.0",
         "gulp-param": "^0.6.3",
         "gulp-print": "^1.1.0",
         "gulp-prompt": "^0.1.1",

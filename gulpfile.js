@@ -22,6 +22,7 @@ var gulp        = require('gulp-param')(require('gulp'), process.argv),
     copy        = require('gulp-copy'),
     foreach     = require('gulp-foreach'),
     git         = require('gulp-git'),
+    insert      = require('gulp-insert'),
     print       = require('gulp-print'),
     prompt      = require('gulp-prompt'),
     rename      = require('gulp-rename'),
@@ -43,8 +44,9 @@ var semantic = {
     paths    = {
         tmp:  {
             root:        'tmp',
-            definitions: 'tmp/definitions',
-            themes:      'tmp/themes'
+            scss:        'tmp/scss',
+            definitions: 'tmp/scss/definitions',
+            themes:      'tmp/scss/themes'
         },
         src:  {
             root:        semantic.path + '/src',
@@ -76,7 +78,11 @@ gulp.task('default', function() {
 gulp.task('clean', function() {
     console.log('Cleaning temporary directory...');
 
-    del([tmp.root + '/*']);
+    //del([paths.tmp.root + '/*']);
+    del([
+        paths.tmp.scss + '/*',
+        paths.dest.root + '/*'
+    ]);
 
     console.log('Done cleaning directories');
 });
@@ -176,7 +182,7 @@ gulp.task('convert', function() {
 
             // We don't want to replace but I didn't find a gulp match plugin for file contents
             // This really should be replaced
-            .pipe(replace(/^\s*@(?!font-face|import|media|keyframes|-|\{)([\w\d]+?)[\s:]/gmi, function(string, variableName) {
+            .pipe(replace(/^\s*@(?!font-face\s|import\s|media\s|keyframes\s|-|\{)([\w\d]+?)[\s:]/gmi, function(string, variableName) {
                 globals[themeName][variableName] = true;
 
                 return string;
@@ -194,17 +200,9 @@ gulp.task('convert', function() {
 
     gulp.src(sources, { base: process.cwd() })
 
-        // Remove @import '../../theme.config'; from definitions
-        .pipe(replace(/\.loadUIOverrides\(\);/g, ''))
-
-        // Remove .loadUIOverrides(); from definitions
-        .pipe(replace(/@import '\.\.\/\.\.\/theme\.config';/g, ''))
-
-        // Replace variables (@ with $)
-        // Prefix with the filename if not global
-        // Uppercase first letter of the match to maintain camelcase
         .pipe(foreach(function(stream, file) {
             var baseName  = path.basename(file.relative, path.extname(file.relative)),
+                extName   = path.extname(file.relative),
                 themeName = path.dirname(file.relative).match(/.+\/(.+)\/.+$/)[1];
 
             // Definitions are not a theme
@@ -212,7 +210,33 @@ gulp.task('convert', function() {
                 themeName = 'default';
             }
 
-            return stream.pipe(replace(/@(?!font-face|import|media|keyframes|-)(\{)?([\w\d]{1})([\w\d\-]*)/g, function(string, openingBrace, nameFirstChar, nameRemainder) {
+            if (extName == '.less') {
+
+                // Remove @import '../../theme.config'; from definitions
+                stream.pipe(replace(/@import '\.\.\/\.\.\/theme\.config';/g, ''));
+
+                // Remove .loadUIOverrides(); from definitions
+                stream.pipe(replace(/\.loadUIOverrides\(\);/g, ''));
+            }
+
+            // Redefine globals with prefixed defaults
+            if (baseName != 'site' && extName == '.variables') {
+                var string = '';
+
+                Object.keys(globals[themeName]).forEach(function(variable) {
+                    var varFirstChar = variable.substring(0, 1),
+                        varRemainder = variable.substring(1, variable.length);
+
+                    string += '$' + baseName + varFirstChar.toUpperCase() + varRemainder + ': $' + variable + ';\n';
+                });
+
+                stream.pipe(insert.prepend(string));
+            }
+
+            // Replace variables (@ with $)
+            // Prefix with the filename if not global
+            // Uppercase first letter of the match to maintain camelcase
+            stream.pipe(replace(/@(?!font-face\s|import\s|media\s|keyframes\s|-)(\{)?([\w\d]{1})([\w\d\-]*)/g, function(string, openingBrace, nameFirstChar, nameRemainder) {
                 var replacement  = '$',
                     variableName = nameFirstChar + nameRemainder;
 
@@ -221,16 +245,18 @@ gulp.task('convert', function() {
                 }
 
                 // Do not prefix globals
-                if (variableName in globals[themeName] || variableName in globals['default']) {
+                //if (variableName in globals[themeName] || variableName in globals['default']) {
+                if (baseName == 'site') {
                     replacement += nameFirstChar;
                 }
-                // Prefix everything else
                 else {
                     replacement += baseName + nameFirstChar.toUpperCase();
                 }
 
                 return replacement + nameRemainder;
             }));
+
+            return stream;
         }))
 
         // Replace mixins
@@ -245,6 +271,18 @@ gulp.task('convert', function() {
         // Replace spin with adjust-hue
         .pipe(replace(/spin\(/g, 'adjust-hue('))
 
+        // Replace unit(..., ...) with string literal
+        .pipe(replace(/unit\((.*),\s(\w*)\);/g, '#{$1 + "$2"};'))
+
+        // Fix calc() string literals
+        // Ruby sass doesn't mind this but libsass will throw a 'invalid operands for multiplication' error
+        .pipe(replace(/#{"calc\((.*)\)"}/g, function(string, match) {
+            match = match.replace(/"}/g, '" + ');
+            match = match.replace(/#{"/g, ' + "');
+
+            return '#{"calc(' + match + ')"}';
+        }))
+
         // Add new lines before opening comments
         // mostly cosmetic but it makes the files much easier to read after concat
         .pipe(replace(/\/\*{2,}/g, '\n\n$&'))
@@ -258,7 +296,7 @@ gulp.task('convert', function() {
             }
         }))
 
-        .pipe(gulp.dest(paths.tmp.root));
+        .pipe(gulp.dest(paths.tmp.scss));
 });
 
 
@@ -272,8 +310,14 @@ gulp.task('concat', function() {
         var themeName = path.basename(themeDir);
 
         // Concat theme variables into one settings file per theme
+        var sources = [
+            themeDir + 'globals/site.variables',
+            themeDir + 'globals/reset.variables',
+            themeDir + '*/*.variables'
+        ];
+
         stream.queue(
-            gulp.src(themeDir + '*/*.variables')
+            gulp.src(sources)
                 .pipe(concat('_' + themeName + '.scss'))
                 .pipe(gulp.dest(paths.dest.scss + '/semantic/variables'))
         );
