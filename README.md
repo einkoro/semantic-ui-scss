@@ -2,6 +2,8 @@
 
 A automated port of Semantic UI to SCSS.
 
+**Experimental and incomplete, this won't give you a working SASS/SCSS port yet (if ever).**
+
 ## Notes
 
 - Variables must be imported before components. Defining !default variables per component currently runs into the issue of themes overriding globals which would be ignored with !default and without it prevent overriding them ourselves.
